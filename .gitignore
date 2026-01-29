@@ -1,0 +1,29 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# Environment
+.env
+
+# Secrets (CRITICAL)
+secrets/
+simulcast-engine/secrets/
+
+# OAuth tokens
+*token*.json
+*client_secret*.json
+*client_secrets*.json
+
+# Media
+output/
+*.mp4
+*.ts
+*.m3u8
+
+# Docker runtime
+docker-data/
+
+# IDE
+.vscode/
+.idea/

@@ -1,0 +1,96 @@
+# =============================================================================
+# 24×7 Simulcast Engine - Production Docker Compose
+# =============================================================================
+#
+# Start with: docker compose up -d
+# Stop with: docker compose down
+#
+# PREREQUISITES:
+#   1. Run 'python tools/youtube_auth_cli.py' to authenticate with YouTube
+#   2. Place video files in 'output/' folder
+#   3. Update .env with your settings
+#
+# =============================================================================
+
+services:
+  # ---------------------------------------------------------------------------
+  # Nginx-RTMP Relay Server
+  # ---------------------------------------------------------------------------
+  nginx-rtmp:
+    build: ./nginx
+    container_name: simulcast_nginx
+    ports:
+      - "1935:1935" # RTMP ingest
+      - "80:80" # HLS + /stat
+    environment:
+      - YOUTUBE_STREAM_KEY=${YOUTUBE_STREAM_KEY}
+    restart: always
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "http://localhost/health" ]
+      interval: 30s
+      timeout: 10s
+      start_period: 5s
+      retries: 3
+    networks:
+      - simulcast
+
+  # ---------------------------------------------------------------------------
+  # Stream Engine (24×7 FFmpeg Loop)
+  # ---------------------------------------------------------------------------
+  stream-engine:
+    build: ./app
+    container_name: simulcast_engine
+    restart: always
+    volumes:
+      - ./output:/app/videos:ro # Video files (read-only)
+      - ./secrets:/app/secrets:ro # OAuth tokens (read-only)
+      - ./config:/app/config:ro # Runtime config (read-only)
+    environment:
+      - STREAM_MODE=loop
+      - RESOLUTION=1080p
+      - RTMP_SERVER_URL=rtmp://nginx-rtmp:1935/live/stream
+    env_file:
+      - .env
+    depends_on:
+      nginx-rtmp:
+        condition: service_healthy
+    healthcheck:
+      test: [ "CMD", "pgrep", "-f", "ffmpeg" ]
+      interval: 10s
+      timeout: 5s
+      start_period: 15s
+      retries: 3
+    networks:
+      - simulcast
+    command: [ "python", "-u", "entrypoint.py" ]
+
+  # ---------------------------------------------------------------------------
+  # Web Dashboard (Read-Only Monitoring)
+  # ---------------------------------------------------------------------------
+  web-dashboard:
+    build: ./app
+    container_name: simulcast_dashboard
+    restart: always
+    ports:
+      - "8000:8000" # Dashboard UI
+    volumes:
+      - ./config:/app/config:ro
+    environment:
+      - NGINX_STAT_URL=http://nginx-rtmp/stat
+      - FLASK_ENV=production
+    env_file:
+      - .env
+    depends_on:
+      - nginx-rtmp
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "http://localhost:8000/api/health" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - simulcast
+    command: [ "gunicorn", "-w", "2", "-b", "0.0.0.0:8000", "--timeout", "120", "main:app" ]
+
+networks:
+  simulcast:
+    driver: bridge

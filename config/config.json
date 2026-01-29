@@ -1,0 +1,24 @@
+{
+    "stream_mode": "loop",
+    "resolution": "1080p",
+    "video_folder": "/app/videos",
+    "rtmp_ingest": "rtmp://nginx-rtmp:1935/live/stream",
+    "ffmpeg_preset": "veryfast",
+    "refresh_interval_seconds": 10,
+    "bitrates": {
+        "1080p": {
+            "video": "4500k",
+            "maxrate": "5000k",
+            "bufsize": "10000k"
+        },
+        "720p": {
+            "video": "2500k",
+            "maxrate": "3000k",
+            "bufsize": "6000k"
+        }
+    },
+    "youtube": {
+        "enabled": true,
+        "push_via_nginx": true
+    }
+}
