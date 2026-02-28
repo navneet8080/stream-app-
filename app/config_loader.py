@@ -18,9 +18,11 @@ from pydantic import BaseModel, Field
 from pydantic_settings import BaseSettings
 from dotenv import load_dotenv
 
-# Load .env file from project root
-BASE_DIR = Path(__file__).parent.parent
+# Load .env file from app root
+BASE_DIR = Path(__file__).parent
 load_dotenv(BASE_DIR / ".env")
+# Also try parent for local development
+load_dotenv(BASE_DIR.parent / ".env")
 
 
 class BitrateConfig(BaseModel):
@@ -40,7 +42,7 @@ class StreamConfig(BaseModel):
     """Full streaming configuration from config.json."""
     stream_mode: str = "loop"  # "loop" or "newest"
     resolution: str = "1080p"  # "1080p" or "720p"
-    video_folder: str = "/app/videos"
+    video_folder: str = "/app/output"
     rtmp_ingest: str = "rtmp://nginx-rtmp:1935/live/stream"
     ffmpeg_preset: str = "veryfast"
     refresh_interval_seconds: int = 10
@@ -59,10 +61,7 @@ class EnvSettings(BaseSettings):
     
     # RTMP Settings (can override config.json)
     RTMP_SERVER_URL: Optional[str] = Field(default=None)
-    RTMP_STREAM_KEY: Optional[str] = Field(default=None)
-    
-    # YouTube (secrets)
-    YOUTUBE_STREAM_KEY: Optional[str] = Field(default=None)
+
     
     # Paths
     VIDEO_FOLDER: Optional[str] = Field(default=None)
@@ -151,16 +150,8 @@ class ConfigLoader:
         return self._config.bitrates.get(resolution, self._config.bitrates["1080p"])
     
     def get_rtmp_url(self) -> str:
-        """Get the full RTMP URL including stream key if provided."""
-        base_url = self._config.rtmp_ingest
-        if self._env.RTMP_STREAM_KEY:
-            # Append stream key if provided separately
-            return f"{base_url}/{self._env.RTMP_STREAM_KEY}"
-        return base_url
-    
-    def get_youtube_stream_key(self) -> Optional[str]:
-        """Get YouTube stream key from environment (never from code)."""
-        return self._env.YOUTUBE_STREAM_KEY
+        """Get the full RTMP URL."""
+        return self._config.rtmp_ingest
 
 
 # Global singleton instance

@@ -6,7 +6,7 @@ class Settings(BaseSettings):
     SECRET_KEY: str = "dev_secret_key"
     
     # Paths
-    VIDEO_FOLDER: str = "/app/videos"
+    VIDEO_FOLDER: str = "/app/output"
     
     # RTMP
     RTMP_SERVER_URL: str = "rtmp://nginx-rtmp:1935/live"

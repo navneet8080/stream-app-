@@ -1,58 +1,64 @@
 """
 Web Dashboard Routes
 ====================
-Read-only dashboard for stream monitoring.
-
-CRITICAL: No control buttons.
-CRITICAL: No mutation endpoints.
-This is an observer, not a controller.
+Serves the single-page Broadcast Control Dashboard.
+All data is loaded via API fetch calls from the frontend.
+Includes HLS proxy to forward /hls/* requests to Nginx.
 """
 
-from flask import Blueprint, render_template
+import os
+import urllib.request
+import urllib.error
+from flask import Blueprint, render_template, Response
 
 web_bp = Blueprint('web', __name__)
+
+# Nginx URL inside Docker network
+NGINX_URL = os.environ.get("NGINX_STAT_URL", "http://nginx-rtmp").rsplit("/", 1)[0]
+# Fallback: http://nginx-rtmp
 
 
 @web_bp.route('/')
 def dashboard():
+    """Serve the broadcast control dashboard."""
+    return render_template('dashboard.html')
+
+
+@web_bp.route('/hls/<path:filename>')
+def hls_proxy(filename):
     """
-    Main dashboard page.
+    Proxy HLS requests to Nginx-RTMP server.
     
-    Displays:
-    - Stream status (LIVE/IDLE)
-    - Current video
-    - FPS, bitrate
-    - HLS preview
-    - Uptime
-    
-    NO control buttons.
+    The dashboard runs on port 8080 but Nginx serves HLS on port 80.
+    This proxy lets the dashboard JS fetch /hls/* from its own origin,
+    avoiding cross-origin issues.
     """
-    from stream_engine import stream_engine
-    from playlist_manager import playlist_manager
-    from metrics import metrics
-    from config_loader import config
+    nginx_hls_url = f"{NGINX_URL}/hls/{filename}"
     
-    # Get engine status
-    engine_status = stream_engine.status
-    
-    # Get metrics
-    stream_metrics = metrics.get_stream_metrics(engine_status)
-    
-    # Get playlist
-    playlist = playlist_manager.get_file_names()
-    
-    return render_template(
-        'dashboard.html',
-        status=stream_metrics.get('status', 'UNKNOWN'),
-        is_live=stream_metrics.get('is_live', False),
-        current_file=stream_metrics.get('current_file', 'None'),
-        mode=stream_metrics.get('mode', 'unknown'),
-        resolution=stream_metrics.get('resolution', 'unknown'),
-        fps=stream_metrics.get('fps', 0),
-        bitrate_mbps=stream_metrics.get('bitrate_mbps', 0),
-        uptime=stream_metrics.get('uptime', 'N/A'),
-        restart_count=stream_metrics.get('restart_count', 0),
-        nginx_up=stream_metrics.get('nginx_up', False),
-        playlist=playlist,
-        hls_url='/hls/stream.m3u8'
-    )
+    try:
+        req = urllib.request.Request(nginx_hls_url)
+        with urllib.request.urlopen(req, timeout=5) as resp:
+            data = resp.read()
+            content_type = resp.headers.get('Content-Type', 'application/octet-stream')
+            
+            # Set correct MIME types for HLS
+            if filename.endswith('.m3u8'):
+                content_type = 'application/vnd.apple.mpegurl'
+            elif filename.endswith('.ts'):
+                content_type = 'video/mp2t'
+            
+            return Response(
+                data,
+                status=200,
+                content_type=content_type,
+                headers={
+                    'Cache-Control': 'no-cache, no-store',
+                    'Access-Control-Allow-Origin': '*'
+                }
+            )
+    except urllib.error.HTTPError as e:
+        return Response(f"HLS not available: {e.code}", status=e.code)
+    except urllib.error.URLError:
+        return Response("Nginx not reachable", status=502)
+    except Exception as e:
+        return Response(f"HLS proxy error: {str(e)}", status=500)

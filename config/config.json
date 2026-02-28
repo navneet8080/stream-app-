@@ -1,7 +1,7 @@
 {
     "stream_mode": "loop",
     "resolution": "1080p",
-    "video_folder": "/app/videos",
+    "video_folder": "/app/output",
     "rtmp_ingest": "rtmp://nginx-rtmp:1935/live/stream",
     "ffmpeg_preset": "veryfast",
     "refresh_interval_seconds": 10,

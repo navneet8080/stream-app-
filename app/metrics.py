@@ -157,6 +157,7 @@ class MetricsCollector:
                 # Stream status
                 "status": "LIVE" if stream_live else "IDLE",
                 "is_live": stream_live,
+                "state": engine_status.get("state", "idle"),
                 
                 # Current file
                 "current_file": engine_status.get("current_file", "None"),
@@ -178,6 +179,10 @@ class MetricsCollector:
                 "nginx_up": nginx.get("nginx_up", False),
                 "nginx_uptime": nginx.get("uptime"),
                 "total_clients": nginx.get("total_clients", 0),
+                
+                # Relays
+                "active_relays": engine_status.get("active_relays", 0),
+                "total_destinations": engine_status.get("total_destinations", 0),
                 
                 # Process info
                 "pid": engine_status.get("pid"),

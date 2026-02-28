@@ -1,20 +1,20 @@
 # =============================================================================
-# 24×7 Simulcast Engine - Production Docker Compose
+# 24×7 Broadcast Control System - Production Docker Compose
 # =============================================================================
 #
 # Start with: docker compose up -d
 # Stop with: docker compose down
 #
-# PREREQUISITES:
-#   1. Run 'python tools/youtube_auth_cli.py' to authenticate with YouTube
-#   2. Place video files in 'output/' folder
-#   3. Update .env with your settings
+# SETUP:
+#   1. Place video files in 'output/' folder (or upload via dashboard)
+#   2. Open dashboard at http://localhost:8000
+#   3. Add streaming destinations via UI
 #
 # =============================================================================
 
 services:
   # ---------------------------------------------------------------------------
-  # Nginx-RTMP Relay Server
+  # Nginx-RTMP Relay Server (HLS Preview + Stats)
   # ---------------------------------------------------------------------------
   nginx-rtmp:
     build: ./nginx
@@ -22,33 +22,33 @@ services:
     ports:
       - "1935:1935" # RTMP ingest
       - "80:80" # HLS + /stat
-    environment:
-      - YOUTUBE_STREAM_KEY=${YOUTUBE_STREAM_KEY}
     restart: always
     healthcheck:
       test: [ "CMD", "curl", "-f", "http://localhost/health" ]
       interval: 30s
       timeout: 10s
       start_period: 5s
-      retries: 3
+      retries: 5
     networks:
       - simulcast
 
   # ---------------------------------------------------------------------------
-  # Stream Engine (24×7 FFmpeg Loop)
+  # Stream Engine (24×7 FFmpeg – Database-Driven)
   # ---------------------------------------------------------------------------
   stream-engine:
     build: ./app
     container_name: simulcast_engine
     restart: always
     volumes:
-      - ./output:/app/videos:ro # Video files (read-only)
-      - ./secrets:/app/secrets:ro # OAuth tokens (read-only)
+      - ./output:/app/output # Video files (read-write for uploads)
+      - ./data:/app/data # SQLite database persistence
       - ./config:/app/config:ro # Runtime config (read-only)
     environment:
       - STREAM_MODE=loop
       - RESOLUTION=1080p
       - RTMP_SERVER_URL=rtmp://nginx-rtmp:1935/live/stream
+      - VIDEO_FOLDER=/app/output
+      - DB_PATH=/app/data/broadcast.db
     env_file:
       - .env
     depends_on:
@@ -65,19 +65,23 @@ services:
     command: [ "python", "-u", "entrypoint.py" ]
 
   # ---------------------------------------------------------------------------
-  # Web Dashboard (Read-Only Monitoring)
+  # Web Dashboard (Broadcast Control Panel)
   # ---------------------------------------------------------------------------
   web-dashboard:
     build: ./app
     container_name: simulcast_dashboard
     restart: always
     ports:
-      - "8000:8000" # Dashboard UI
+      - "8080:8000" # Dashboard UI (internal 8000 → host 8080)
     volumes:
+      - ./output:/app/output # For video uploads
+      - ./data:/app/data # Read/write playlist DB
       - ./config:/app/config:ro
     environment:
       - NGINX_STAT_URL=http://nginx-rtmp/stat
       - FLASK_ENV=production
+      - VIDEO_FOLDER=/app/output
+      - DB_PATH=/app/data/broadcast.db
     env_file:
       - .env
     depends_on:
@@ -89,7 +93,7 @@ services:
       retries: 3
     networks:
       - simulcast
-    command: [ "gunicorn", "-w", "2", "-b", "0.0.0.0:8000", "--timeout", "120", "main:app" ]
+    command: [ "gunicorn", "-k", "gevent", "-w", "4", "-b", "0.0.0.0:8000", "--timeout", "600", "main:app" ]
 
 networks:
   simulcast:

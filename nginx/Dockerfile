@@ -1,10 +1,7 @@
 FROM tiangolo/nginx-rtmp
 
-# Install gettext for envsubst (for env var substitution in nginx.conf)
-RUN apt-get update && apt-get install -y gettext-base && rm -rf /var/lib/apt/lists/*
-
-# Copy configuration as template (will be processed at runtime)
-COPY nginx.conf /etc/nginx/nginx.conf.template
+# Copy configuration directly (no envsubst needed)
+COPY nginx.conf /etc/nginx/nginx.conf
 
 # Copy RTMP statistics stylesheet
 COPY stat.xsl /etc/nginx/stat.xsl
@@ -20,10 +17,9 @@ RUN mkdir -p /tmp/hls && chmod -R 777 /tmp/hls
 RUN mkdir -p /var/log/nginx
 
 # Health check
-HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=5 \
     CMD curl -f http://localhost/health || exit 1
 
 EXPOSE 1935 80
 
 ENTRYPOINT ["/entrypoint.sh"]
-

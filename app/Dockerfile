@@ -17,7 +17,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY . .
 
 # Create necessary directories
-RUN mkdir -p /app/videos /app/secrets /app/config
+RUN mkdir -p /app/output /app/data /app/secrets /app/config
 
 # Expose dashboard port
 EXPOSE 8000

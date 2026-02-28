@@ -1,16 +1,14 @@
 """
-Stream Engine
-=============
-The heart of the 24×7 Simulcast Engine.
+Stream Engine – Database-Driven Broadcast Controller
+=====================================================
+Fault-tolerant 24×7 streaming engine.
 
-This module owns the FFmpeg subprocess and is responsible for:
-- Running FFmpeg in an infinite loop
-- Auto-restarting on crash
-- Never blocking Flask
-- Logging every restart and error
-
-CRITICAL: This is NOT controlled by the UI.
-The stream starts when the container starts and runs forever.
+Key design:
+- LOCAL stream to Nginx is ALWAYS separate (never killed by external failures)
+- External destinations run as independent FFmpeg processes
+- Dynamic playlist reload via version checking
+- Exponential backoff on failures
+- Real-time status updates
 """
 
 import subprocess
@@ -19,13 +17,14 @@ import time
 import logging
 import signal
 import sys
+import os
 from pathlib import Path
-from typing import Optional, List
+from typing import Optional, List, Dict, Any
 from datetime import datetime
 
 from config_loader import config
+import database as db
 
-# Configure logging
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s [%(levelname)s] %(name)s: %(message)s',
@@ -33,260 +32,399 @@ logging.basicConfig(
 )
 logger = logging.getLogger("StreamEngine")
 
+VIDEO_FOLDER = os.environ.get("VIDEO_FOLDER", "/app/output")
+
 
 class StreamEngine:
     """
-    FFmpeg subprocess owner for 24×7 streaming.
+    Fault-tolerant FFmpeg streaming engine.
     
-    This class:
-    - Owns exactly ONE FFmpeg subprocess
-    - Runs in an infinite loop
-    - Auto-restarts on crash
-    - Never depends on Flask lifecycle
-    - Logs every restart
+    Architecture:
+    - One PRIMARY FFmpeg → Nginx (HLS preview) — always runs
+    - Separate RELAY FFmpeg processes → external destinations — best-effort
+    - If a relay fails, only that relay restarts, not the primary
     """
-    
+
     def __init__(self):
-        self._process: Optional[subprocess.Popen] = None
+        self._primary_proc: Optional[subprocess.Popen] = None
+        self._relay_procs: Dict[int, subprocess.Popen] = {}  # dest_id → process
         self._thread: Optional[threading.Thread] = None
         self._running: bool = False
         self._lock = threading.Lock()
-        
-        # Metrics
+
+        # Status (read by dashboard — must be fast, no locks)
         self._start_time: Optional[datetime] = None
         self._current_file: Optional[str] = None
+        self._current_queue_id: Optional[int] = None
         self._restart_count: int = 0
         self._last_error: Optional[str] = None
-        
-        # Graceful shutdown handler
-        signal.signal(signal.SIGTERM, self._handle_shutdown)
-        signal.signal(signal.SIGINT, self._handle_shutdown)
-    
-    def _handle_shutdown(self, signum, frame):
-        """Handle graceful shutdown on SIGTERM/SIGINT."""
-        logger.info(f"Received signal {signum}, initiating graceful shutdown...")
+        self._play_start_time: Optional[datetime] = None
+        self._state: str = "idle"  # idle, playing, waiting, error
+
+        # Dynamic reload
+        self._known_version: int = 0
+
+        # Backoff
+        self._backoff: float = 2.0
+        self._max_backoff: float = 60.0
+        self._last_success: Optional[datetime] = None
+
+        signal.signal(signal.SIGTERM, self._shutdown)
+        signal.signal(signal.SIGINT, self._shutdown)
+
+    def _shutdown(self, signum, frame):
+        logger.info(f"Signal {signum} received, shutting down...")
         self.stop()
         sys.exit(0)
-    
-    def _get_video_files(self) -> List[Path]:
-        """Get list of video files from the output folder."""
-        video_folder = Path(config.stream_config.video_folder)
-        if not video_folder.exists():
-            logger.warning(f"Video folder does not exist: {video_folder}")
-            return []
-        
-        # Get all MP4 files, sorted by modification time
-        files = list(video_folder.glob("*.mp4"))
-        files.sort(key=lambda f: f.stat().st_mtime)
-        return files
-    
-    def _get_current_file(self) -> Optional[Path]:
-        """Get the current file to stream based on mode."""
-        files = self._get_video_files()
-        if not files:
-            return None
-        
-        mode = config.stream_config.stream_mode
-        
-        if mode == "newest":
-            # Stream the most recently modified file
-            return files[-1]
-        elif mode == "loop":
-            # Return first file, looping handled by FFmpeg
-            return files[0]
-        
-        return files[0]
-    
-    def _build_ffmpeg_command(self, input_file: Path) -> List[str]:
-        """Build the FFmpeg command with mandatory flags."""
+
+    # ─────────────── FFmpeg Commands ───────────────
+
+    def _build_primary_cmd(self, input_file: str, loop_count: int = -1) -> List[str]:
+        """Build FFmpeg command for LOCAL Nginx push only."""
         bitrate = config.get_bitrate()
-        rtmp_url = config.get_rtmp_url()
         preset = config.stream_config.ffmpeg_preset
-        
-        # Resolution-based scaling
         resolution = config.stream_config.resolution
         scale = "1920:1080" if resolution == "1080p" else "1280:720"
-        
-        cmd = [
-            "ffmpeg",
-            # Real-time processing (MANDATORY)
+        local_rtmp = config.stream_config.rtmp_ingest
+
+        return [
+            "ffmpeg", "-y",
             "-re",
-            # Infinite loop (MANDATORY for 24×7)
-            "-stream_loop", "-1",
-            # Input file
-            "-i", str(input_file),
-            # Video codec settings (MANDATORY)
+            "-stream_loop", str(loop_count),
+            "-i", input_file,
             "-c:v", "libx264",
-            "-preset", preset,  # veryfast (MANDATORY)
-            "-pix_fmt", "yuv420p",  # MANDATORY for compatibility
-            # Scaling
+            "-preset", preset,
+            "-pix_fmt", "yuv420p",
             "-vf", f"scale={scale}",
-            # Bitrate control
             "-b:v", bitrate.video,
             "-maxrate", bitrate.maxrate,
             "-bufsize", bitrate.bufsize,
-            # Keyframe interval (2 seconds at 30fps)
             "-g", "60",
-            # Audio codec settings
             "-c:a", "aac",
             "-b:a", "128k",
             "-ar", "44100",
-            # Output format
             "-f", "flv",
-            # RTMP destination (Nginx relay ONLY)
-            rtmp_url
+            local_rtmp
         ]
-        
-        return cmd
-    
-    def _stream_loop(self):
-        """
-        Main streaming loop.
-        
-        This runs in a separate thread and:
-        - Starts FFmpeg
-        - Monitors for crashes
-        - Auto-restarts on failure
-        - Never exits unless explicitly stopped
-        """
-        logger.info("=" * 60)
-        logger.info("STREAM ENGINE STARTING - 24×7 MODE")
-        logger.info("=" * 60)
-        
-        self._start_time = datetime.now()
-        
-        while self._running:
-            # Get current file to stream
-            input_file = self._get_current_file()
-            
-            if not input_file:
-                logger.error("No video files found! Waiting 10s before retry...")
-                time.sleep(10)
-                continue
-            
-            self._current_file = input_file.name
-            logger.info(f"Starting stream: {input_file.name}")
-            logger.info(f"Mode: {config.stream_config.stream_mode}")
-            logger.info(f"Resolution: {config.stream_config.resolution}")
-            logger.info(f"RTMP Target: {config.get_rtmp_url()}")
-            
-            # Build and run FFmpeg command
-            cmd = self._build_ffmpeg_command(input_file)
-            logger.info(f"FFmpeg command: {' '.join(cmd)}")
-            
+
+    def _start_relays(self):
+        """Start relay FFmpeg processes for each enabled external destination."""
+        self._stop_relays()
+
+        destinations = db.get_enabled_destinations()
+        if not destinations:
+            return
+
+        local_rtmp = config.stream_config.rtmp_ingest
+
+        for dest in destinations:
+            dest_url = dest["rtmp_url"]
+            if dest["stream_key"]:
+                dest_url = f"{dest_url}/{dest['stream_key']}"
+
+            # Relay: read from local Nginx RTMP → push to external
+            cmd = [
+                "ffmpeg", "-y",
+                "-rw_timeout", "5000000",
+                "-i", local_rtmp,
+                "-c", "copy",
+                "-f", "flv",
+                "-flvflags", "no_duration_filesize",
+                dest_url
+            ]
+
             try:
-                # Start FFmpeg subprocess
-                self._process = subprocess.Popen(
+                proc = subprocess.Popen(
                     cmd,
-                    stdout=subprocess.PIPE,
+                    stdout=subprocess.DEVNULL,
                     stderr=subprocess.PIPE,
                     universal_newlines=True
                 )
-                
-                logger.info(f"FFmpeg started with PID: {self._process.pid}")
-                
-                # Monitor the process
-                while self._running and self._process.poll() is None:
-                    # Process is still running
-                    time.sleep(1)
-                
-                # Check exit status
-                if self._process.returncode is not None:
-                    if self._running:
-                        # Unexpected exit - log and restart
-                        stderr = self._process.stderr.read() if self._process.stderr else ""
-                        self._last_error = stderr[-500:] if len(stderr) > 500 else stderr
-                        self._restart_count += 1
-                        logger.error(f"FFmpeg exited with code {self._process.returncode}")
-                        logger.error(f"Last error: {self._last_error}")
-                        logger.info(f"Auto-restarting... (restart #{self._restart_count})")
-                        time.sleep(2)  # Brief pause before restart
-                    else:
-                        # Graceful stop
-                        logger.info("FFmpeg stopped gracefully")
-                        
+                self._relay_procs[dest["id"]] = proc
+                logger.info(f"  ⇨ Relay started → {dest['platform_name']} (PID {proc.pid})")
             except Exception as e:
-                self._last_error = str(e)
-                self._restart_count += 1
-                logger.error(f"Stream error: {e}")
-                logger.info(f"Restarting after error... (restart #{self._restart_count})")
-                time.sleep(5)  # Longer pause after error
-        
+                logger.warning(f"  ✗ Relay failed for {dest['platform_name']}: {e}")
+
+    def _stop_relays(self):
+        """Stop all relay processes."""
+        for dest_id, proc in list(self._relay_procs.items()):
+            try:
+                proc.terminate()
+                proc.wait(timeout=3)
+            except Exception:
+                try:
+                    proc.kill()
+                except Exception:
+                    pass
+        self._relay_procs.clear()
+
+    def _check_relays(self):
+        """Check relay health and restart any that died."""
+        for dest_id, proc in list(self._relay_procs.items()):
+            if proc.poll() is not None:
+                logger.warning(f"  Relay {dest_id} died (exit {proc.returncode}), restarting...")
+                del self._relay_procs[dest_id]
+
+                # Restart this specific relay
+                dest_info = None
+                for d in db.get_enabled_destinations():
+                    if d["id"] == dest_id:
+                        dest_info = d
+                        break
+
+                if dest_info:
+                    dest_url = dest_info["rtmp_url"]
+                    if dest_info["stream_key"]:
+                        dest_url = f"{dest_url}/{dest_info['stream_key']}"
+
+                    local_rtmp = config.stream_config.rtmp_ingest
+                    cmd = [
+                        "ffmpeg", "-y",
+                        "-rw_timeout", "5000000",
+                        "-i", local_rtmp,
+                        "-c", "copy",
+                        "-f", "flv",
+                        "-flvflags", "no_duration_filesize",
+                        dest_url
+                    ]
+
+                    try:
+                        new_proc = subprocess.Popen(
+                            cmd,
+                            stdout=subprocess.DEVNULL,
+                            stderr=subprocess.PIPE,
+                            universal_newlines=True
+                        )
+                        self._relay_procs[dest_id] = new_proc
+                        logger.info(f"  ⇨ Relay restarted → {dest_info['platform_name']} (PID {new_proc.pid})")
+                    except Exception as e:
+                        logger.warning(f"  ✗ Relay restart failed for {dest_info['platform_name']}: {e}")
+
+    # ─────────────── Playback ───────────────
+
+    def _play_video(self, filepath: str, loop_count: int = 0, max_duration: int = 0) -> bool:
+        """
+        Play a video via PRIMARY FFmpeg → Nginx.
+        External relays run separately.
+
+        Returns True if completed successfully.
+        """
+        cmd = self._build_primary_cmd(filepath, loop_count)
+        logger.info(f"  FFmpeg: {len(cmd)} args → {config.stream_config.rtmp_ingest}")
+
+        try:
+            self._primary_proc = subprocess.Popen(
+                cmd,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.PIPE,
+                universal_newlines=True
+            )
+            self._play_start_time = datetime.now()
+            self._state = "playing"
+            logger.info(f"  Primary FFmpeg PID: {self._primary_proc.pid}")
+
+            # Start external relays (best-effort, non-blocking)
+            relay_thread = threading.Thread(target=self._start_relays, daemon=True)
+            relay_thread.start()
+
+            tick = 0
+            while self._running and self._primary_proc.poll() is None:
+                time.sleep(1)
+                tick += 1
+
+                # Check forced duration
+                if max_duration > 0 and self._play_start_time:
+                    elapsed = (datetime.now() - self._play_start_time).total_seconds()
+                    if elapsed >= max_duration:
+                        logger.info(f"  Force duration reached ({max_duration}s)")
+                        self._kill_primary()
+                        return True
+
+                # Check relays every 15 seconds
+                if tick % 15 == 0:
+                    self._check_relays()
+
+                # Check playlist version every 10 seconds
+                if tick % 10 == 0:
+                    new_ver = db.get_playlist_version()
+                    if new_ver != self._known_version:
+                        logger.info(f"  Playlist changed ({self._known_version}→{new_ver})")
+                        self._known_version = new_ver
+
+            # Check exit
+            if self._primary_proc and self._primary_proc.returncode is not None:
+                if self._primary_proc.returncode == 0 or not self._running:
+                    return True
+                else:
+                    stderr = ""
+                    try:
+                        stderr = self._primary_proc.stderr.read()[-500:]
+                    except Exception:
+                        pass
+                    self._last_error = stderr
+                    logger.error(f"  FFmpeg exit code {self._primary_proc.returncode}: {stderr[:200]}")
+                    return False
+
+            return True
+
+        except Exception as e:
+            self._last_error = str(e)
+            logger.error(f"  FFmpeg error: {e}")
+            return False
+
+    def _kill_primary(self):
+        """Kill primary FFmpeg gracefully."""
+        if self._primary_proc:
+            try:
+                self._primary_proc.terminate()
+                self._primary_proc.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                self._primary_proc.kill()
+            except Exception:
+                pass
+            self._primary_proc = None
+
+    # ─────────────── Main Loop ───────────────
+
+    def _stream_loop(self):
+        logger.info("=" * 60)
+        logger.info("STREAM ENGINE STARTING – FAULT-TOLERANT MODE")
+        logger.info("=" * 60)
+
+        self._start_time = datetime.now()
+        self._known_version = db.get_playlist_version()
+
+        while self._running:
+            # Get next queued item
+            item = db.get_next_queued_item()
+
+            if not item:
+                queue = db.get_playlist_queue()
+                done_items = [q for q in queue if q["status"] == "done"]
+
+                if done_items:
+                    logger.info("All items played. Resetting for continuous loop...")
+                    db.reset_all_to_queued()
+                    self._state = "waiting"
+                    continue
+                else:
+                    self._state = "waiting"
+                    self._current_file = None
+                    time.sleep(5)
+                    continue
+
+            # Validate file
+            video_file = os.path.join(VIDEO_FOLDER, item["filename"])
+            if not os.path.exists(video_file):
+                logger.error(f"  File not found: {video_file}")
+                db.mark_done(item["id"])
+                continue
+
+            self._current_file = item["filename"]
+            self._current_queue_id = item["id"]
+            db.mark_playing(item["id"])
+
+            logger.info(f"▶ {item['filename']} (repeat={item['repeat_count']}, force={item.get('force_duration_seconds',0)}s)")
+
+            force_dur = item.get("force_duration_seconds", 0) or 0
+            repeat = item.get("repeat_count", 1) or 1
+
+            if force_dur > 0:
+                success = self._play_video(video_file, loop_count=-1, max_duration=force_dur)
+            else:
+                success = self._play_video(video_file, loop_count=repeat - 1)
+
+            # Stop relays between videos
+            self._stop_relays()
+
+            if success:
+                db.mark_done(item["id"])
+                self._backoff = 2.0
+                self._last_success = datetime.now()
+                logger.info(f"✓ Done: {item['filename']}")
+            else:
+                if self._running:
+                    self._restart_count += 1
+                    self._state = "error"
+                    logger.error(f"✗ Failed: {item['filename']} (retry #{self._restart_count})")
+                    time.sleep(self._backoff)
+                    self._backoff = min(self._backoff * 2, self._max_backoff)
+
+                    if self._last_success:
+                        if (datetime.now() - self._last_success).total_seconds() > 300:
+                            self._backoff = 2.0
+
+                    db.mark_done(item["id"])
+
+        self._stop_relays()
+        self._state = "idle"
         logger.info("Stream engine stopped")
-    
+
     def start(self):
-        """Start the streaming engine in background thread."""
         with self._lock:
             if self._running:
-                logger.warning("Stream engine already running")
                 return
-            
             self._running = True
             self._thread = threading.Thread(target=self._stream_loop, daemon=True)
             self._thread.start()
             logger.info("Stream engine thread started")
-    
+
     def stop(self):
-        """Stop the streaming engine gracefully."""
         with self._lock:
             self._running = False
-            
-            if self._process:
-                logger.info("Stopping FFmpeg process...")
-                try:
-                    self._process.terminate()
-                    self._process.wait(timeout=5)
-                except subprocess.TimeoutExpired:
-                    logger.warning("FFmpeg did not terminate, killing...")
-                    self._process.kill()
-                self._process = None
-            
+            self._kill_primary()
+            self._stop_relays()
             if self._thread:
                 self._thread.join(timeout=10)
                 self._thread = None
-    
+
     @property
     def is_running(self) -> bool:
-        """Check if the engine is running."""
-        return self._running and self._process is not None and self._process.poll() is None
-    
+        return self._running and self._primary_proc is not None and self._primary_proc.poll() is None
+
     @property
     def status(self) -> dict:
-        """Get current engine status for metrics."""
         uptime = None
         if self._start_time and self._running:
             uptime = (datetime.now() - self._start_time).total_seconds()
-        
+
+        elapsed = None
+        if self._play_start_time and self.is_running:
+            elapsed = (datetime.now() - self._play_start_time).total_seconds()
+
+        active_relays = sum(1 for p in self._relay_procs.values() if p.poll() is None)
+
         return {
             "running": self.is_running,
+            "state": self._state,
             "current_file": self._current_file,
-            "mode": config.stream_config.stream_mode,
+            "current_queue_id": self._current_queue_id,
+            "mode": "database",
             "resolution": config.stream_config.resolution,
             "restart_count": self._restart_count,
             "uptime_seconds": uptime,
+            "elapsed_current_seconds": elapsed,
             "last_error": self._last_error,
-            "pid": self._process.pid if self._process else None
+            "pid": self._primary_proc.pid if self._primary_proc else None,
+            "playlist_version": self._known_version,
+            "active_relays": active_relays,
+            "total_destinations": len(self._relay_procs)
         }
 
 
-# Global singleton instance
+# Singleton
 stream_engine = StreamEngine()
 
 
 def start_engine():
-    """Auto-start function called when module loads in production."""
     stream_engine.start()
 
 
-# Auto-start if running as main module (for testing)
 if __name__ == "__main__":
-    print("Starting Stream Engine (standalone mode)...")
+    db.init_db()
     stream_engine.start()
-    
-    # Keep main thread alive
     try:
         while True:
             time.sleep(1)
     except KeyboardInterrupt:
-        print("Shutting down...")
         stream_engine.stop()

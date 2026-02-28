@@ -4,89 +4,113 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>24×7 Simulcast Engine - Dashboard</title>
-
-    <!-- HLS.js for video preview -->
+    <title>NNS Broadcast Control</title>
+    <meta name="description" content="24×7 Broadcast Control Dashboard">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
-
     <style>
         :root {
-            --bg-primary: #0f0f0f;
-            --bg-secondary: #1a1a1a;
-            --bg-card: #252525;
-            --text-primary: #ffffff;
-            --text-secondary: #a0a0a0;
-            --accent: #00d4ff;
-            --success: #00ff88;
-            --warning: #ffaa00;
-            --danger: #ff4444;
-            --border: #333333;
+            --bg-base: #0a0a0f;
+            --bg-surface: #12121a;
+            --bg-card: #1a1a26;
+            --bg-el: #22222f;
+            --bg-input: #2a2a38;
+            --text: #f0f0f5;
+            --text2: #8888a0;
+            --text3: #55556a;
+            --accent: #6c5ce7;
+            --accent-g: rgba(108, 92, 231, .3);
+            --cyan: #00cec9;
+            --cyan-g: rgba(0, 206, 201, .2);
+            --green: #00b894;
+            --green-g: rgba(0, 184, 148, .15);
+            --red: #ff4757;
+            --red-g: rgba(255, 71, 87, .15);
+            --orange: #ffa502;
+            --blue: #0984e3;
+            --border: rgba(255, 255, 255, .06);
+            --border2: rgba(255, 255, 255, .12);
+            --rad: 14px;
+            --rad-s: 8px;
+            --tr: .18s ease;
         }
 
         * {
             margin: 0;
             padding: 0;
-            box-sizing: border-box;
+            box-sizing: border-box
         }
 
         body {
-            font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, Roboto, sans-serif;
-            background: var(--bg-primary);
-            color: var(--text-primary);
+            font-family: 'Inter', system-ui, sans-serif;
+            background: var(--bg-base);
+            color: var(--text);
             min-height: 100vh;
-            padding: 20px;
+            line-height: 1.5
         }
 
-        .header {
+        /* Header */
+        .hdr {
+            background: var(--bg-surface);
+            border-bottom: 1px solid var(--border);
+            padding: 14px 28px;
             display: flex;
             justify-content: space-between;
             align-items: center;
-            margin-bottom: 24px;
-            padding-bottom: 16px;
-            border-bottom: 1px solid var(--border);
+            position: sticky;
+            top: 0;
+            z-index: 100;
+            backdrop-filter: blur(16px)
         }
 
-        .header h1 {
-            font-size: 24px;
-            font-weight: 600;
+        .hdr h1 {
+            font-size: 19px;
+            font-weight: 700;
+            background: linear-gradient(135deg, var(--cyan), var(--accent));
+            -webkit-background-clip: text;
+            background-clip: text;
+            -webkit-text-fill-color: transparent
         }
 
-        .status-badge {
+        .pill {
             display: flex;
             align-items: center;
-            gap: 8px;
-            padding: 8px 16px;
+            gap: 7px;
+            padding: 5px 14px;
             border-radius: 20px;
-            font-weight: 600;
-            font-size: 14px;
+            font-size: 12px;
+            font-weight: 700;
+            letter-spacing: .5px
         }
 
-        .status-badge.live {
-            background: rgba(0, 255, 136, 0.2);
-            color: var(--success);
-            border: 1px solid var(--success);
+        .pill.live {
+            background: var(--green-g);
+            color: var(--green);
+            border: 1px solid var(--green)
         }
 
-        .status-badge.idle {
-            background: rgba(160, 160, 160, 0.2);
-            color: var(--text-secondary);
-            border: 1px solid var(--text-secondary);
+        .pill.idle {
+            background: rgba(136, 136, 160, .08);
+            color: var(--text2);
+            border: 1px solid var(--text3)
         }
 
-        .status-dot {
-            width: 8px;
-            height: 8px;
+        .pill.wait {
+            background: rgba(255, 165, 2, .1);
+            color: var(--orange);
+            border: 1px solid var(--orange)
+        }
+
+        .dot {
+            width: 7px;
+            height: 7px;
             border-radius: 50%;
-            animation: pulse 2s infinite;
+            background: currentColor
         }
 
-        .status-dot.live {
-            background: var(--success);
-        }
-
-        .status-dot.idle {
-            background: var(--text-secondary);
-            animation: none;
+        .pill.live .dot {
+            animation: pulse 1.2s infinite
         }
 
         @keyframes pulse {
@@ -94,349 +118,1019 @@
             0%,
             100% {
                 opacity: 1;
+                transform: scale(1)
             }
 
             50% {
-                opacity: 0.5;
+                opacity: .3;
+                transform: scale(.7)
             }
         }
 
+        /* Grid */
         .grid {
             display: grid;
             grid-template-columns: 1fr 1fr;
-            gap: 20px;
+            gap: 18px;
+            padding: 20px 28px;
+            max-width: 1600px;
+            margin: 0 auto
         }
 
-        @media (max-width: 1000px) {
+        @media(max-width:1100px) {
             .grid {
                 grid-template-columns: 1fr;
+                padding: 14px
             }
         }
 
+        /* Card */
         .card {
             background: var(--bg-card);
-            border-radius: 12px;
-            overflow: hidden;
+            border-radius: var(--rad);
             border: 1px solid var(--border);
+            overflow: hidden;
+            animation: fadeIn .3s ease
         }
 
-        .card-header {
-            padding: 16px 20px;
+        .card.full {
+            grid-column: 1/-1
+        }
+
+        .card-h {
+            padding: 12px 18px;
             border-bottom: 1px solid var(--border);
-            background: var(--bg-secondary);
-        }
-
-        .card-header h3 {
-            font-size: 14px;
-            font-weight: 600;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-            color: var(--accent);
-        }
-
-        .card-body {
-            padding: 20px;
-        }
-
-        .video-container {
-            position: relative;
-            width: 100%;
-            aspect-ratio: 16 / 9;
-            background: #000;
-        }
-
-        .video-container video {
-            width: 100%;
-            height: 100%;
-            object-fit: contain;
-        }
-
-        .metrics-grid {
-            display: grid;
-            grid-template-columns: repeat(3, 1fr);
-            gap: 16px;
-        }
-
-        .metric {
-            text-align: center;
-            padding: 16px;
-            background: var(--bg-secondary);
-            border-radius: 8px;
-        }
-
-        .metric-value {
-            font-size: 32px;
-            font-weight: 700;
-            color: var(--accent);
-            font-variant-numeric: tabular-nums;
-        }
-
-        .metric-label {
-            font-size: 12px;
-            color: var(--text-secondary);
-            margin-top: 4px;
-            text-transform: uppercase;
-        }
-
-        .info-list {
-            display: flex;
-            flex-direction: column;
-            gap: 12px;
-        }
-
-        .info-row {
             display: flex;
             justify-content: space-between;
-            align-items: center;
-            padding: 8px 0;
-            border-bottom: 1px solid var(--border);
+            align-items: center
         }
 
-        .info-row:last-child {
-            border-bottom: none;
+        .card-t {
+            font-size: 12px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: .8px;
+            color: var(--text2)
         }
 
-        .info-label {
-            color: var(--text-secondary);
-            font-size: 14px;
+        .card-b {
+            padding: 18px
         }
 
-        .info-value {
-            font-weight: 500;
-            font-size: 14px;
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+                transform: translateY(6px)
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0)
+            }
         }
 
-        .info-value.success {
-            color: var(--success);
+        /* Metrics */
+        .mstrip {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+            gap: 10px
         }
 
-        .info-value.warning {
-            color: var(--warning);
+        .mbox {
+            background: var(--bg-el);
+            border-radius: var(--rad-s);
+            padding: 14px;
+            text-align: center;
+            border: 1px solid var(--border)
         }
 
-        .playlist {
-            max-height: 200px;
-            overflow-y: auto;
+        .mv {
+            font-size: 26px;
+            font-weight: 800;
+            color: var(--cyan);
+            font-variant-numeric: tabular-nums;
+            line-height: 1.1
         }
 
-        .playlist-item {
-            padding: 10px 12px;
-            background: var(--bg-secondary);
+        .ml {
+            font-size: 10px;
+            color: var(--text3);
+            text-transform: uppercase;
+            letter-spacing: .4px;
+            margin-top: 3px
+        }
+
+        /* Upload */
+        .uz {
+            border: 2px dashed var(--border2);
+            border-radius: var(--rad);
+            padding: 36px 20px;
+            text-align: center;
+            cursor: pointer;
+            transition: all var(--tr);
+            position: relative
+        }
+
+        .uz:hover,
+        .uz.drag {
+            border-color: var(--accent);
+            background: var(--accent-g)
+        }
+
+        .uz .icon {
+            font-size: 36px;
+            display: block;
+            margin-bottom: 10px
+        }
+
+        .uz p {
+            color: var(--text2);
+            font-size: 13px
+        }
+
+        .uz small {
+            color: var(--text3);
+            font-size: 11px
+        }
+
+        .uprog {
+            margin-top: 14px;
+            display: none
+        }
+
+        .pbar-c {
+            background: var(--bg-input);
             border-radius: 6px;
-            margin-bottom: 8px;
-            font-size: 13px;
+            overflow: hidden;
+            height: 5px
+        }
+
+        .pbar {
+            height: 100%;
+            background: linear-gradient(90deg, var(--accent), var(--cyan));
+            border-radius: 6px;
+            width: 0%;
+            transition: width .2s
+        }
+
+        .upstat {
+            font-size: 11px;
+            color: var(--text2);
+            margin-top: 6px
+        }
+
+        input[type="file"] {
+            display: none
+        }
+
+        /* Table */
+        .dt {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 13px
+        }
+
+        .dt th {
+            text-align: left;
+            padding: 9px 10px;
+            font-size: 10px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: .4px;
+            color: var(--text3);
+            border-bottom: 1px solid var(--border)
+        }
+
+        .dt td {
+            padding: 9px 10px;
+            border-bottom: 1px solid var(--border);
+            vertical-align: middle
+        }
+
+        .dt tr:last-child td {
+            border-bottom: none
+        }
+
+        .dt tbody tr {
+            transition: background var(--tr)
+        }
+
+        .dt tbody tr:hover {
+            background: var(--bg-el)
+        }
+
+        .dt tbody tr.now {
+            background: var(--cyan-g);
+            border-left: 3px solid var(--cyan)
+        }
+
+        .dt tbody tr[draggable="true"] {
+            cursor: grab
+        }
+
+        .dt tbody tr.dragging {
+            opacity: .3
+        }
+
+        /* Badges */
+        .badge {
+            display: inline-block;
+            padding: 2px 9px;
+            border-radius: 12px;
+            font-size: 10px;
+            font-weight: 600
+        }
+
+        .bg {
+            background: var(--green-g);
+            color: var(--green)
+        }
+
+        .bo {
+            background: rgba(255, 165, 2, .12);
+            color: var(--orange)
+        }
+
+        .br {
+            background: var(--red-g);
+            color: var(--red)
+        }
+
+        .bb {
+            background: rgba(9, 132, 227, .12);
+            color: var(--blue)
+        }
+
+        /* Buttons */
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            padding: 7px 14px;
+            border-radius: var(--rad-s);
+            border: 1px solid var(--border);
+            background: var(--bg-el);
+            color: var(--text);
+            font-size: 12px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all var(--tr);
+            font-family: inherit;
+            white-space: nowrap
+        }
+
+        .btn:hover {
+            border-color: var(--accent);
+            background: var(--accent-g)
+        }
+
+        .btn:disabled {
+            opacity: .4;
+            pointer-events: none
+        }
+
+        .btn-p {
+            background: linear-gradient(135deg, var(--accent), #5a4bd1);
+            border-color: var(--accent);
+            color: #fff
+        }
+
+        .btn-p:hover {
+            opacity: .9;
+            transform: translateY(-1px)
+        }
+
+        .btn-d {
+            border-color: var(--red);
+            color: var(--red)
+        }
+
+        .btn-d:hover {
+            background: var(--red-g)
+        }
+
+        .btn-s {
+            padding: 3px 9px;
+            font-size: 11px
+        }
+
+        .btn-i {
+            width: 28px;
+            height: 28px;
+            padding: 0;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 6px
+        }
+
+        /* Inputs */
+        .inp {
+            background: var(--bg-input);
+            border: 1px solid var(--border);
+            border-radius: var(--rad-s);
+            padding: 7px 10px;
+            color: var(--text);
+            font-size: 12px;
+            font-family: inherit;
+            width: 100%;
+            transition: border-color var(--tr)
+        }
+
+        .inp:focus {
+            outline: none;
+            border-color: var(--accent);
+            box-shadow: 0 0 0 3px var(--accent-g)
+        }
+
+        .inp-s {
+            width: 65px;
+            text-align: center;
+            padding: 3px 6px
+        }
+
+        select.inp {
+            appearance: none;
+            cursor: pointer
+        }
+
+        /* Toggle */
+        .tog {
+            position: relative;
+            width: 40px;
+            height: 22px;
+            display: inline-block
+        }
+
+        .tog input {
+            display: none
+        }
+
+        .tog-s {
+            position: absolute;
+            inset: 0;
+            background: var(--bg-input);
+            border-radius: 11px;
+            cursor: pointer;
+            transition: background var(--tr)
+        }
+
+        .tog-s::before {
+            content: '';
+            position: absolute;
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+            background: var(--text2);
+            top: 3px;
+            left: 3px;
+            transition: all var(--tr)
+        }
+
+        .tog input:checked+.tog-s {
+            background: var(--green)
+        }
+
+        .tog input:checked+.tog-s::before {
+            transform: translateX(18px);
+            background: #fff
+        }
+
+        /* Video */
+        .vc {
+            position: relative;
+            width: 100%;
+            aspect-ratio: 16/9;
+            background: #000;
+            border-radius: var(--rad-s);
+            overflow: hidden
+        }
+
+        .vc video {
+            width: 100%;
+            height: 100%;
+            object-fit: contain
+        }
+
+        .vo {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            padding: 10px 14px;
+            background: linear-gradient(transparent, rgba(0, 0, 0, .8));
+            font-size: 11px;
+            color: var(--text2)
+        }
+
+        /* Block bar */
+        .bbar {
+            background: var(--bg-input);
+            border-radius: 6px;
+            height: 10px;
+            overflow: hidden;
+            margin-top: 10px
+        }
+
+        .bfill {
+            height: 100%;
+            background: linear-gradient(90deg, var(--green), var(--cyan));
+            border-radius: 6px;
+            transition: width .4s
+        }
+
+        .binfo {
+            display: flex;
+            justify-content: space-between;
+            margin-top: 6px;
+            font-size: 11px;
+            color: var(--text2)
+        }
+
+        /* Modal */
+        .modal-o {
+            position: fixed;
+            inset: 0;
+            background: rgba(0, 0, 0, .65);
+            backdrop-filter: blur(4px);
+            z-index: 200;
+            display: none;
+            align-items: center;
+            justify-content: center
+        }
+
+        .modal-o.on {
+            display: flex
+        }
+
+        .modal {
+            background: var(--bg-card);
+            border-radius: var(--rad);
+            border: 1px solid var(--border);
+            padding: 24px;
+            max-width: 480px;
+            width: 90%;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, .5)
+        }
+
+        .modal h3 {
+            font-size: 17px;
+            font-weight: 700;
+            margin-bottom: 18px
+        }
+
+        .fg {
+            margin-bottom: 14px
+        }
+
+        .fg label {
+            display: block;
+            font-size: 11px;
+            font-weight: 600;
+            color: var(--text2);
+            margin-bottom: 5px;
+            text-transform: uppercase;
+            letter-spacing: .4px
+        }
+
+        .fa {
+            display: flex;
+            gap: 10px;
+            justify-content: flex-end;
+            margin-top: 20px
+        }
+
+        /* Toast */
+        .toast-c {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            z-index: 300;
+            display: flex;
+            flex-direction: column;
+            gap: 6px
+        }
+
+        .toast {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: var(--rad-s);
+            padding: 10px 16px;
+            font-size: 12px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, .5);
+            animation: slideIn .25s ease;
             display: flex;
             align-items: center;
-            gap: 8px;
+            gap: 7px;
+            max-width: 400px
         }
 
-        .playlist-item.active {
-            border-left: 3px solid var(--accent);
-            background: rgba(0, 212, 255, 0.1);
+        .toast.ok {
+            border-left: 3px solid var(--green)
         }
 
-        .playlist-item .icon {
-            opacity: 0.6;
+        .toast.err {
+            border-left: 3px solid var(--red)
         }
 
-        .footer {
-            margin-top: 24px;
-            padding-top: 16px;
-            border-top: 1px solid var(--border);
+        @keyframes slideIn {
+            from {
+                opacity: 0;
+                transform: translateX(30px)
+            }
+
+            to {
+                opacity: 1;
+                transform: translateX(0)
+            }
+        }
+
+        /* Spinner */
+        .spin {
+            display: inline-block;
+            width: 14px;
+            height: 14px;
+            border: 2px solid var(--border2);
+            border-top-color: var(--cyan);
+            border-radius: 50%;
+            animation: spin .6s linear infinite
+        }
+
+        @keyframes spin {
+            to {
+                transform: rotate(360deg)
+            }
+        }
+
+        .empty {
             text-align: center;
-            color: var(--text-secondary);
-            font-size: 12px;
+            padding: 28px;
+            color: var(--text3)
         }
 
-        /* No control buttons - this is read-only */
-        .notice {
-            background: rgba(0, 212, 255, 0.1);
-            border: 1px solid var(--accent);
-            border-radius: 8px;
-            padding: 12px 16px;
-            margin-top: 16px;
-            font-size: 13px;
-            color: var(--accent);
-            text-align: center;
+        .empty .icon {
+            font-size: 28px;
+            margin-bottom: 6px
+        }
+
+        .empty p {
+            font-size: 12px
+        }
+
+        .nw {
+            white-space: nowrap
+        }
+
+        ::-webkit-scrollbar {
+            width: 5px
+        }
+
+        ::-webkit-scrollbar-track {
+            background: transparent
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: var(--bg-el);
+            border-radius: 3px
         }
     </style>
 </head>
 
 <body>
-    <div class="header">
-        <h1>📡 24×7 Simulcast Engine</h1>
-        <div class="status-badge {{ 'live' if is_live else 'idle' }}">
-            <span class="status-dot {{ 'live' if is_live else 'idle' }}"></span>
-            {{ status }}
-        </div>
-    </div>
+    <header class="hdr">
+        <h1>📡 NNS Broadcast Control</h1>
+        <div id="pill" class="pill idle"><span class="dot"></span><span id="pillTxt">IDLE</span></div>
+    </header>
 
     <div class="grid">
-        <!-- Live Preview -->
+        <!-- Monitor -->
         <div class="card">
-            <div class="card-header">
-                <h3>🎬 Live Preview</h3>
-            </div>
-            <div class="card-body" style="padding: 0;">
-                <div class="video-container">
-                    <video id="video" muted autoplay playsinline></video>
+            <div class="card-h"><span class="card-t">📡 Live Monitor</span><span id="nowLbl"
+                    style="font-size:11px;color:var(--text2)">—</span></div>
+            <div class="card-b">
+                <div class="mstrip">
+                    <div class="mbox">
+                        <div class="mv" id="mFps">0</div>
+                        <div class="ml">FPS</div>
+                    </div>
+                    <div class="mbox">
+                        <div class="mv" id="mBit">0</div>
+                        <div class="ml">Mbps</div>
+                    </div>
+                    <div class="mbox">
+                        <div class="mv" id="mUp">00:00</div>
+                        <div class="ml">Uptime</div>
+                    </div>
+                    <div class="mbox">
+                        <div class="mv" id="mRst">0</div>
+                        <div class="ml">Restarts</div>
+                    </div>
+                    <div class="mbox">
+                        <div class="mv" id="mRly">0</div>
+                        <div class="ml">Relays</div>
+                    </div>
+                </div>
+                <div style="margin-top:16px">
+                    <div style="display:flex;justify-content:space-between;align-items:center">
+                        <span style="font-size:11px;color:var(--text2)">Schedule Block</span>
+                        <select class="inp" id="blockSel" style="width:auto;padding:3px 8px;font-size:11px">
+                            <option value="43200">12 Hours</option>
+                            <option value="86400" selected>24 Hours</option>
+                        </select>
+                    </div>
+                    <div class="bbar">
+                        <div class="bfill" id="bFill" style="width:0%"></div>
+                    </div>
+                    <div class="binfo"><span id="bFilled">Filled: 00:00:00</span><span id="bRem">Remaining:
+                            24:00:00</span></div>
                 </div>
             </div>
         </div>
 
-        <!-- Metrics -->
+        <!-- Preview -->
         <div class="card">
-            <div class="card-header">
-                <h3>📊 Stream Metrics</h3>
-            </div>
-            <div class="card-body">
-                <div class="metrics-grid">
-                    <div class="metric">
-                        <div class="metric-value" id="fps">{{ fps }}</div>
-                        <div class="metric-label">FPS</div>
-                    </div>
-                    <div class="metric">
-                        <div class="metric-value" id="bitrate">{{ bitrate_mbps }}</div>
-                        <div class="metric-label">Mbps</div>
-                    </div>
-                    <div class="metric">
-                        <div class="metric-value" id="uptime">{{ uptime }}</div>
-                        <div class="metric-label">Uptime</div>
-                    </div>
+            <div class="card-h"><span class="card-t">🎬 Live Preview</span><span id="ngStat"
+                    class="badge bo">Checking...</span></div>
+            <div class="card-b" style="padding:0">
+                <div class="vc"><video id="hlsV" muted autoplay playsinline></video>
+                    <div class="vo"><span id="pvFile">Waiting for stream...</span></div>
                 </div>
+            </div>
+        </div>
 
-                <div class="info-list" style="margin-top: 20px;">
-                    <div class="info-row">
-                        <span class="info-label">Current File</span>
-                        <span class="info-value" id="current-file">{{ current_file }}</span>
+        <!-- Upload -->
+        <div class="card">
+            <div class="card-h"><span class="card-t">⬆️ Upload Video</span><span id="vCount"
+                    style="font-size:11px;color:var(--text3)">0 videos</span></div>
+            <div class="card-b">
+                <div class="uz" id="uz"><span class="icon">📁</span>
+                    <p>Drag & drop video files here</p><small>or click to browse • MP4, MKV, AVI, MOV, WebM • No size
+                        limit</small><input type="file" id="fIn" accept=".mp4,.mkv,.avi,.mov,.webm" multiple>
+                </div>
+                <div class="uprog" id="uprog">
+                    <div class="pbar-c">
+                        <div class="pbar" id="pbar"></div>
                     </div>
-                    <div class="info-row">
-                        <span class="info-label">Mode</span>
-                        <span class="info-value">{{ mode }}</span>
-                    </div>
-                    <div class="info-row">
-                        <span class="info-label">Resolution</span>
-                        <span class="info-value">{{ resolution }}</span>
-                    </div>
-                    <div class="info-row">
-                        <span class="info-label">Nginx Status</span>
-                        <span class="info-value {{ 'success' if nginx_up else 'warning' }}">
-                            {{ '✓ Connected' if nginx_up else '⚠ Disconnected' }}
-                        </span>
-                    </div>
-                    <div class="info-row">
-                        <span class="info-label">Restarts</span>
-                        <span class="info-value">{{ restart_count }}</span>
-                    </div>
+                    <div class="upstat" id="upstat">Uploading...</div>
+                </div>
+                <div style="margin-top:14px;max-height:220px;overflow-y:auto" id="vLib"></div>
+            </div>
+        </div>
+
+        <!-- Destinations -->
+        <div class="card">
+            <div class="card-h"><span class="card-t">🌍 Streaming Destinations</span><button class="btn btn-s"
+                    onclick="openDM()">+ Add</button></div>
+            <div class="card-b" id="destB">
+                <div class="empty">
+                    <div class="icon">🔌</div>
+                    <p>No destinations</p>
                 </div>
             </div>
         </div>
 
         <!-- Playlist -->
-        <div class="card">
-            <div class="card-header">
-                <h3>📋 Video Queue ({{ playlist|length }} files)</h3>
+        <div class="card full">
+            <div class="card-h">
+                <span class="card-t">📋 Playlist Queue</span>
+                <div style="display:flex;gap:8px;align-items:center">
+                    <span id="qTot" style="font-size:11px;color:var(--text2)">Total: 00:00:00</span>
+                    <button class="btn btn-s btn-d" id="clearBtn" onclick="clearPL()">Clear All</button>
+                </div>
             </div>
-            <div class="card-body">
-                <div class="playlist">
-                    {% for file in playlist %}
-                    <div class="playlist-item {{ 'active' if file == current_file else '' }}">
-                        <span class="icon">🎞️</span>
-                        {{ file }}
-                    </div>
-                    {% else %}
-                    <div class="playlist-item">
-                        <span class="icon">⚠️</span>
-                        No videos in queue
-                    </div>
-                    {% endfor %}
+            <div class="card-b" style="padding:0">
+                <div style="overflow-x:auto">
+                    <table class="dt" id="plTbl">
+                        <thead>
+                            <tr>
+                                <th style="width:36px">#</th>
+                                <th>Video</th>
+                                <th style="width:80px">Duration</th>
+                                <th style="width:72px">Repeat</th>
+                                <th style="width:110px">Force Loop</th>
+                                <th style="width:90px">Total</th>
+                                <th style="width:70px">Status</th>
+                                <th style="width:60px"></th>
+                            </tr>
+                        </thead>
+                        <tbody id="plBody">
+                            <tr>
+                                <td colspan="8" class="empty">
+                                    <div class="icon">📭</div>
+                                    <p>Queue empty. Upload videos and add them.</p>
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
                 </div>
             </div>
         </div>
 
-        <!-- System Info -->
-        <div class="card">
-            <div class="card-header">
-                <h3>ℹ️ System Information</h3>
-            </div>
-            <div class="card-body">
-                <div class="info-list">
-                    <div class="info-row">
-                        <span class="info-label">HLS Preview URL</span>
-                        <span class="info-value" style="font-family: monospace; font-size: 12px;">{{ hls_url }}</span>
-                    </div>
-                    <div class="info-row">
-                        <span class="info-label">RTMP Ingest</span>
-                        <span class="info-value"
-                            style="font-family: monospace; font-size: 12px;">rtmp://nginx:1935/live</span>
-                    </div>
-                </div>
-
-                <div class="notice">
-                    👁️ This is a read-only monitoring dashboard.<br>
-                    Stream control is managed by the engine automatically.
+        <!-- Upcoming -->
+        <div class="card full">
+            <div class="card-h"><span class="card-t">⏭ Upcoming</span></div>
+            <div class="card-b" id="upNext">
+                <div class="empty">
+                    <p>No upcoming items</p>
                 </div>
             </div>
         </div>
     </div>
 
-    <div class="footer">
-        24×7 Simulcast Engine • Auto-refresh every 3 seconds
+    <!-- Destination Modal -->
+    <div class="modal-o" id="dModal">
+        <div class="modal">
+            <h3>Add Streaming Destination</h3>
+            <div class="fg"><label>Platform</label><select class="inp" id="dPlat">
+                    <option value="YouTube">YouTube</option>
+                    <option value="Facebook">Facebook</option>
+                    <option value="X (Twitter)">X (Twitter)</option>
+                    <option value="Custom">Custom</option>
+                </select></div>
+            <div class="fg"><label>RTMP URL</label><input class="inp" id="dUrl"
+                    placeholder="rtmp://a.rtmp.youtube.com/live2" value="rtmp://a.rtmp.youtube.com/live2"></div>
+            <div class="fg"><label>Stream Key</label><input class="inp" id="dKey" placeholder="xxxx-xxxx-xxxx-xxxx">
+            </div>
+            <div class="fa"><button class="btn" onclick="closeDM()">Cancel</button><button class="btn btn-p"
+                    onclick="addDest()">Add Destination</button></div>
+        </div>
     </div>
+
+    <div class="toast-c" id="toastC"></div>
 
     <script>
-        // Initialize HLS player
-        const video = document.getElementById('video');
-        const hlsUrl = '{{ hls_url }}';
+        // ═══ Helpers ═══
+        const $ = s => document.getElementById(s);
+        const api = async (u, o = {}) => { try { const r = await fetch(u, o); return await r.json(); } catch (e) { console.error(u, e); return null; } };
+        const toast = (m, t = 'ok') => { const c = $('toastC'), e = document.createElement('div'); e.className = `toast ${t}`; e.innerHTML = `${t === 'ok' ? '✓' : '✗'} ${m}`; c.appendChild(e); setTimeout(() => e.remove(), 3500); };
+        const fmtD = s => { if (!s || s <= 0) return '00:00:00'; const h = Math.floor(s / 3600), m = Math.floor(s % 3600 / 60), sec = Math.floor(s % 60); return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(sec).padStart(2, '0')}`; };
+        const fmtS = s => { if (!s || s <= 0) return '0:00'; return `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`; };
+        const fmtSz = b => { if (!b) return '0 B'; const u = ['B', 'KB', 'MB', 'GB']; let i = 0, s = b; while (s >= 1024 && i < u.length - 1) { s /= 1024; i++ } return `${s.toFixed(1)} ${u[i]}`; };
 
-        if (Hls.isSupported()) {
-            const hls = new Hls({
-                enableWorker: true,
-                lowLatencyMode: true
-            });
-            hls.loadSource(hlsUrl);
-            hls.attachMedia(video);
-            hls.on(Hls.Events.MANIFEST_PARSED, () => {
-                video.play().catch(e => console.log('Auto-play prevented'));
-            });
-            hls.on(Hls.Events.ERROR, (event, data) => {
-                console.log('HLS error:', data);
-            });
-        } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
-            video.src = hlsUrl;
-        }
-
-        // Auto-refresh metrics
-        async function updateMetrics() {
-            try {
-                const response = await fetch('/api/metrics');
-                const data = await response.json();
-
-                // Update metrics
-                document.getElementById('fps').textContent = data.fps || 0;
-                document.getElementById('bitrate').textContent = data.bitrate_mbps || 0;
-                document.getElementById('uptime').textContent = data.uptime || 'N/A';
-                document.getElementById('current-file').textContent = data.current_file || 'None';
-
-                // Update status badge
-                const badge = document.querySelector('.status-badge');
-                const dot = document.querySelector('.status-dot');
-                if (data.is_live) {
-                    badge.className = 'status-badge live';
-                    dot.className = 'status-dot live';
-                    badge.innerHTML = `<span class="status-dot live"></span>LIVE`;
-                } else {
-                    badge.className = 'status-badge idle';
-                    dot.className = 'status-dot idle';
-                    badge.innerHTML = `<span class="status-dot idle"></span>IDLE`;
-                }
-            } catch (e) {
-                console.error('Failed to update metrics:', e);
+        // ═══ HLS Player ═══
+        const vid = $('hlsV');
+        let hlsPlayer = null;
+        function initHls() {
+            if (Hls.isSupported()) {
+                hlsPlayer = new Hls({ enableWorker: true, lowLatencyMode: true, backBufferLength: 30 });
+                hlsPlayer.loadSource('/hls/stream.m3u8');
+                hlsPlayer.attachMedia(vid);
+                hlsPlayer.on(Hls.Events.ERROR, (_, d) => {
+                    if (d.fatal) { setTimeout(() => { hlsPlayer.destroy(); initHls(); }, 3000); }
+                });
+                hlsPlayer.on(Hls.Events.MANIFEST_PARSED, () => vid.play().catch(() => { }));
+            } else if (vid.canPlayType('application/vnd.apple.mpegurl')) {
+                vid.src = '/hls/stream.m3u8';
             }
         }
+        initHls();
 
-        // Refresh every 3 seconds
-        setInterval(updateMetrics, 3000);
+        // ═══ Upload ═══
+        const uz = $('uz'), fIn = $('fIn'), uprog = $('uprog'), pbar = $('pbar'), upstat = $('upstat');
+        uz.addEventListener('click', () => fIn.click());
+        uz.addEventListener('dragover', e => { e.preventDefault(); uz.classList.add('drag'); });
+        uz.addEventListener('dragleave', () => uz.classList.remove('drag'));
+        uz.addEventListener('drop', e => { e.preventDefault(); uz.classList.remove('drag'); if (e.dataTransfer.files.length) uploadFiles(e.dataTransfer.files); });
+        fIn.addEventListener('change', () => { if (fIn.files.length) uploadFiles(fIn.files); });
+
+        async function uploadFiles(files) {
+            for (const file of files) {
+                uprog.style.display = 'block';
+                pbar.style.width = '0%';
+                upstat.textContent = `Uploading: ${file.name} (${fmtSz(file.size)})...`;
+                const fd = new FormData();
+                fd.append('file', file);
+                try {
+                    await new Promise((resolve, reject) => {
+                        const xhr = new XMLHttpRequest();
+                        xhr.upload.addEventListener('progress', e => {
+                            if (e.lengthComputable) {
+                                const pct = Math.round(e.loaded / e.total * 100);
+                                pbar.style.width = `${pct}%`;
+                                upstat.textContent = `${file.name} — ${fmtSz(e.loaded)} / ${fmtSz(e.total)} (${pct}%)`;
+                            }
+                        });
+                        xhr.onload = () => {
+                            if (xhr.status < 300) {
+                                try { const d = JSON.parse(xhr.responseText); toast(`Uploaded: ${d.filename} (${fmtS(d.duration_seconds)}, ${fmtSz(d.file_size_bytes)})`); } catch (e) { toast(`Uploaded: ${file.name}`); }
+                                resolve();
+                            } else {
+                                let msg = `Upload failed (${xhr.status})`;
+                                try { msg = JSON.parse(xhr.responseText).error || msg; } catch (e) { }
+                                toast(msg, 'err'); reject();
+                            }
+                        };
+                        xhr.onerror = () => { toast(`Network error: ${file.name}`, 'err'); reject(); };
+                        xhr.timeout = 0;
+                        xhr.open('POST', '/api/upload');
+                        xhr.send(fd);
+                    });
+                } catch (e) { }
+            }
+            uprog.style.display = 'none';
+            fIn.value = '';
+            loadVideos();
+        }
+
+        // ═══ Videos ═══
+        async function loadVideos() {
+            const d = await api('/api/videos');
+            if (!d) return;
+            $('vCount').textContent = `${d.count} video${d.count !== 1 ? 's' : ''}`;
+            const c = $('vLib');
+            if (d.count === 0) { c.innerHTML = '<div class="empty"><p>No videos</p></div>'; return; }
+            c.innerHTML = d.videos.map(v => `
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:7px 10px;background:var(--bg-el);border-radius:var(--rad-s);margin-bottom:5px">
+            <div><span style="font-size:12px">🎞️ ${v.filename}</span><span style="font-size:10px;color:var(--text3);margin-left:6px">${fmtS(v.duration_seconds)} • ${fmtSz(v.file_size_bytes)}</span></div>
+            <div style="display:flex;gap:5px"><button class="btn btn-s btn-p" onclick="addQ(${v.id})">+ Queue</button><button class="btn-i btn btn-d btn-s" onclick="delV(${v.id})" title="Delete">🗑</button></div>
+        </div>`).join('');
+        }
+
+        async function delV(id) {
+            if (!confirm('Delete this video?')) return;
+            const el = event.target.closest('div[style]');
+            if (el) el.style.opacity = '.3';
+            await api(`/api/videos/${id}`, { method: 'DELETE' });
+            toast('Video deleted');
+            loadVideos();
+            loadPL();
+        }
+
+        async function addQ(vid) {
+            const btn = event.target;
+            btn.disabled = true; btn.innerHTML = '<span class="spin"></span>';
+            await api('/api/playlist/add', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ video_id: vid }) });
+            toast('Added to queue');
+            btn.disabled = false; btn.textContent = '+ Queue';
+            loadPL();
+        }
+
+        // ═══ Playlist ═══
+        async function loadPL() {
+            const d = await api('/api/playlist');
+            if (!d) return;
+            $('qTot').textContent = `Total: ${d.total_display}`;
+            updateBlock(d.total_seconds);
+            const tb = $('plBody');
+            if (d.count === 0) { tb.innerHTML = '<tr><td colspan="8" class="empty"><div class="icon">📭</div><p>Queue empty</p></td></tr>'; return; }
+            tb.innerHTML = d.queue.map((it, i) => {
+                const st = it.status === 'playing' ? '<span class="badge bg">▶ Playing</span>' : it.status === 'done' ? '<span class="badge bb">✓ Done</span>' : '<span class="badge" style="background:var(--bg-input);color:var(--text3)">Queued</span>';
+                const fd = it.force_duration_seconds || 0;
+                return `<tr draggable="true" data-id="${it.id}" class="${it.status === 'playing' ? 'now' : ''}">
+            <td style="color:var(--text3);cursor:grab">⠿ ${i + 1}</td>
+            <td><strong>${it.filename}</strong></td>
+            <td class="nw">${fmtS(it.duration_seconds)}</td>
+            <td><input class="inp inp-s" type="number" min="1" max="999" value="${it.repeat_count}" onchange="updQ(${it.id},'repeat_count',this.value)"></td>
+            <td><input class="inp inp-s" type="number" min="0" step="60" value="${fd}" onchange="updQ(${it.id},'force_duration_seconds',this.value)" style="width:85px"></td>
+            <td class="nw" style="color:var(--cyan)">${fmtD(it.total_play_seconds)}</td>
+            <td>${st}</td>
+            <td><button class="btn-i btn btn-d btn-s" onclick="remQ(${it.id})">✕</button></td></tr>`;
+            }).join('');
+            initDrag();
+        }
+
+        let updTimer = {};
+        function updQ(id, field, val) {
+            clearTimeout(updTimer[id + field]);
+            updTimer[id + field] = setTimeout(async () => {
+                const body = {}; body[field] = parseInt(val) || 0;
+                await api(`/api/playlist/update/${id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+                loadPL();
+            }, 400);
+        }
+
+        async function remQ(id) {
+            const row = event.target.closest('tr');
+            if (row) row.style.opacity = '.2';
+            await api(`/api/playlist/remove/${id}`, { method: 'DELETE' });
+            toast('Removed');
+            loadPL();
+        }
+
+        async function clearPL() {
+            if (!confirm('Clear entire queue?')) return;
+            const btn = $('clearBtn');
+            btn.disabled = true; btn.innerHTML = '<span class="spin"></span> Clearing...';
+            await api('/api/playlist/clear', { method: 'POST' });
+            toast('Queue cleared');
+            btn.disabled = false; btn.textContent = 'Clear All';
+            loadPL();
+        }
+
+        // ═══ Drag Reorder ═══
+        function initDrag() {
+            const tb = $('plBody');
+            let drag = null;
+            tb.querySelectorAll('tr[draggable]').forEach(r => {
+                r.addEventListener('dragstart', e => { drag = r; r.classList.add('dragging'); e.dataTransfer.effectAllowed = 'move'; });
+                r.addEventListener('dragover', e => { e.preventDefault(); if (drag && r !== drag) { const mid = r.getBoundingClientRect().top + r.getBoundingClientRect().height / 2; tb.insertBefore(drag, e.clientY < mid ? r : r.nextSibling); } });
+                r.addEventListener('dragend', async () => { r.classList.remove('dragging'); const ids = [...tb.querySelectorAll('tr[data-id]')].map(r => +r.dataset.id); await api('/api/playlist/reorder', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ item_ids: ids }) }); loadPL(); });
+            });
+        }
+
+        // ═══ Block Scheduler ═══
+        function updateBlock(tot) {
+            const bl = +$('blockSel').value;
+            const pct = Math.min(tot / bl * 100, 100);
+            $('bFill').style.width = `${pct}%`;
+            $('bFilled').textContent = `Filled: ${fmtD(tot)}`;
+            $('bRem').textContent = `Remaining: ${fmtD(Math.max(0, bl - tot))}`;
+        }
+        $('blockSel').addEventListener('change', () => loadPL());
+
+        // ═══ Destinations ═══
+        async function loadDest() {
+            const d = await api('/api/destinations');
+            if (!d) return;
+            const c = $('destB');
+            if (d.count === 0) { c.innerHTML = '<div class="empty"><div class="icon">🔌</div><p>No destinations</p></div>'; return; }
+            const icons = { 'YouTube': '▶️', 'Facebook': '📘', 'X (Twitter)': '🐦', 'Custom': '🔗' };
+            c.innerHTML = d.destinations.map(x => `
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:9px 12px;background:var(--bg-el);border-radius:var(--rad-s);margin-bottom:7px">
+            <div style="display:flex;align-items:center;gap:10px">
+                <span style="font-size:18px">${icons[x.platform_name] || '🔗'}</span>
+                <div><div style="font-size:12px;font-weight:600">${x.platform_name}</div><div style="font-size:10px;color:var(--text3)">${x.rtmp_url}</div></div>
+            </div>
+            <div style="display:flex;align-items:center;gap:10px">
+                <label class="tog"><input type="checkbox" ${x.is_enabled ? 'checked' : ''} onchange="togDest(${x.id},this.checked)"><span class="tog-s"></span></label>
+                <button class="btn-i btn btn-d btn-s" onclick="delDest(${x.id})">🗑</button>
+            </div>
+        </div>`).join('');
+        }
+
+        function openDM() { $('dModal').classList.add('on') } function closeDM() { $('dModal').classList.remove('on') }
+        $('dPlat').addEventListener('change', function () { const u = { 'YouTube': 'rtmp://a.rtmp.youtube.com/live2', 'Facebook': 'rtmp://live-api-s.facebook.com:80/rtmp', 'X (Twitter)': 'rtmp://x-rtmp.pscp.tv:80/x', 'Custom': '' }; $('dUrl').value = u[this.value] || ''; });
+
+        async function addDest() {
+            const p = $('dPlat').value, u = $('dUrl').value, k = $('dKey').value;
+            if (!u) { toast('RTMP URL required', 'err'); return; }
+            const btn = event.target; btn.disabled = true; btn.innerHTML = '<span class="spin"></span> Adding...';
+            await api('/api/destinations', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ platform_name: p, rtmp_url: u, stream_key: k }) });
+            toast(`${p} added`);
+            closeDM(); $('dKey').value = ''; btn.disabled = false; btn.textContent = 'Add Destination';
+            loadDest();
+        }
+
+        async function togDest(id, on) {
+            await api(`/api/destinations/${id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ is_enabled: on ? 1 : 0 }) });
+            toast(on ? 'Enabled' : 'Disabled');
+        }
+
+        async function delDest(id) {
+            if (!confirm('Remove destination?')) return;
+            const el = event.target.closest('div[style]'); if (el) el.style.opacity = '.2';
+            await api(`/api/destinations/${id}`, { method: 'DELETE' });
+            toast('Removed'); loadDest();
+        }
+
+        // ═══ Status Polling (fast, lightweight) ═══
+        async function pollStatus() {
+            const d = await api('/api/status');
+            if (!d) return;
+
+            // Pill
+            const p = $('pill'), t = $('pillTxt');
+            const st = d.stream?.state || (d.stream?.running ? 'playing' : 'idle');
+            if (st === 'playing') { p.className = 'pill live'; t.textContent = 'LIVE'; }
+            else if (st === 'waiting') { p.className = 'pill wait'; t.textContent = 'WAITING'; }
+            else { p.className = 'pill idle'; t.textContent = 'IDLE'; }
+
+            // Metrics
+            $('mFps').textContent = d.stream?.fps || 0;
+            $('mBit').textContent = d.stream?.bitrate_mbps || 0;
+            $('mUp').textContent = d.stream?.uptime || '00:00';
+            $('mRst').textContent = d.stream?.restart_count || 0;
+            $('mRly').textContent = d.stream?.active_relays ?? 0;
+
+            // Nginx
+            const ng = $('ngStat');
+            if (d.stream?.nginx_up) { ng.className = 'badge bg'; ng.textContent = '✓ Nginx OK' } else { ng.className = 'badge br'; ng.textContent = '✗ Nginx Down' }
+
+            // Now playing
+            const nl = $('nowLbl'), pf = $('pvFile');
+            if (d.currently_playing) { nl.textContent = `▶ ${d.currently_playing.filename}`; pf.textContent = d.currently_playing.filename } else { nl.textContent = '—'; pf.textContent = 'Waiting...' }
+
+            // Upcoming
+            const ub = $('upNext');
+            if (d.upcoming && d.upcoming.length > 0) {
+                ub.innerHTML = '<div style="display:flex;gap:8px;flex-wrap:wrap">' + d.upcoming.map((u, i) => `
+            <div style="background:var(--bg-el);padding:8px 14px;border-radius:var(--rad-s);border:1px solid var(--border);min-width:160px;flex:1">
+                <div style="font-size:10px;color:var(--text3)">Next ${i + 1}</div>
+                <div style="font-size:12px;font-weight:600;margin-top:2px">🎞️ ${u.filename}</div>
+                <div style="font-size:10px;color:var(--text3);margin-top:3px">${fmtS(u.duration_seconds)} • ×${u.repeat_count}${u.force_duration_seconds > 0 ? ' • Force ' + fmtD(u.force_duration_seconds) : ''}</div>
+            </div>`).join('') + '</div>';
+            } else { ub.innerHTML = '<div class="empty"><p>No upcoming</p></div>'; }
+        }
+
+        // ═══ Init & Polling ═══
+        loadVideos(); loadPL(); loadDest(); pollStatus();
+
+        // Fast status poll (2s) — lightweight endpoint
+        setInterval(pollStatus, 2000);
+        // Playlist refresh (3s) — catches queue changes from engine
+        setInterval(loadPL, 3000);
+        // Destinations (8s)
+        setInterval(loadDest, 8000);
     </script>
 </body>
 
